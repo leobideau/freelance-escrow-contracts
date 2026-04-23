@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FreelanceEscrow App</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+
+    <main class="app-shell">
+      <header class="hero">
+        <nav class="nav">
+          <div>
+            <div class="eyebrow">Prototype dApp</div>
+            <div class="logo">Freelance<span>Escrow</span></div>
+          </div>
+
+          <div class="nav-actions">
+            <button class="ghost-btn" id="refreshBtn">Refresh</button>
+            <button class="wallet-btn" id="walletBtn">Connect Wallet</button>
+          </div>
+        </nav>
+
+        <section class="hero-grid">
+          <div class="hero-copy panel">
+            <div class="pill-row">
+              <span class="pill pill-accent">Sepolia</span>
+              <span class="pill pill-green">USDC escrow</span>
+            </div>
+            <h1>Protected freelance delivery, locked funds, cleaner trust.</h1>
+            <p class="hero-text">
+              Funds are locked in the smart contract, released on validated delivery,
+              and protected with cancellation, dispute, and auto-release flows.
+            </p>
+
+            <div class="hero-meta">
+              <div class="meta-block">
+                <div class="meta-label">Escrow</div>
+                <div class="meta-value mono" id="escrowAddress"></div>
+              </div>
+              <div class="meta-block">
+                <div class="meta-label">MockUSDC</div>
+                <div class="meta-value mono" id="tokenAddress"></div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="wallet-panel panel">
+            <div class="panel-heading">
+              <div>
+                <div class="card-title">Wallet session</div>
+                <div class="subtle mono" id="networkBadge">Disconnected</div>
+              </div>
+              <span class="badge pending" id="walletStateBadge">Idle</span>
+            </div>
+
+            <div class="wallet-grid">
+              <div class="stat-card">
+                <div class="stat-label">Address</div>
+                <div class="stat-val mono compact" id="walletAddress">Not connected</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">mUSDC balance</div>
+                <div class="stat-val green" id="walletBalance">0.00</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Client projects</div>
+                <div class="stat-val" id="clientProjectCount">0</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Freelancer projects</div>
+                <div class="stat-val amber" id="freelancerProjectCount">0</div>
+              </div>
+            </div>
+
+            <div class="wallet-tools">
+              <button class="ghost-btn wide" id="switchNetworkBtn">Switch to Sepolia</button>
+              <button class="ghost-btn wide" id="faucetBtn">Get 10,000 mUSDC</button>
+            </div>
+          </aside>
+        </section>
+      </header>
+
+      <section class="tabs">
+        <button class="tab active" data-tab-target="client">Client</button>
+        <button class="tab" data-tab-target="freelancer">Freelancer</button>
+        <button class="tab" data-tab-target="create">New Project</button>
+      </section>
+
+      <section class="section active" id="clientSection">
+        <div class="cards-grid" id="clientStats"></div>
+        <div class="list-stack" id="clientProjectsList"></div>
+      </section>
+
+      <section class="section" id="freelancerSection">
+        <div class="cards-grid" id="freelancerStats"></div>
+        <div class="list-stack" id="freelancerProjectsList"></div>
+      </section>
+
+      <section class="section" id="createSection">
+        <div class="compose-grid">
+          <div class="panel">
+            <div class="panel-heading">
+              <div>
+                <div class="card-title">Create new escrow project</div>
+                <div class="subtle">
+                  The contract stores wallet roles and milestones on-chain. Project title is
+                  saved locally in the browser for UI clarity.
+                </div>
+              </div>
+            </div>
+
+            <form id="createProjectForm" class="form-stack">
+              <div class="form-group">
+                <label class="form-label" for="projectTitle">Project title</label>
+                <input class="form-input" id="projectTitle" name="projectTitle" type="text" placeholder="Landing page redesign" maxlength="80" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="freelancerAddressInput">Freelancer wallet address</label>
+                <input class="form-input mono" id="freelancerAddressInput" name="freelancerAddress" type="text" placeholder="0x..." />
+              </div>
+
+              <div class="form-group">
+                <div class="form-row">
+                  <label class="form-label">Milestones</label>
+                  <button type="button" class="btn-add" id="addMilestoneBtn">+ Add milestone</button>
+                </div>
+                <div class="milestones-builder" id="milestonesBuilder"></div>
+              </div>
+
+              <div class="split-actions">
+                <button type="button" class="ghost-btn wide" id="approveFundsBtn">1. Approve total USDC</button>
+                <button type="submit" class="btn-primary wide">2. Lock funds &amp; create project</button>
+              </div>
+            </form>
+
+            <div class="composer-summary">
+              <div class="summary-box accent-box">
+                <div class="label">Draft total</div>
+                <div class="value" id="draftTotal">0.00 USDC</div>
+              </div>
+              <div class="summary-box">
+                <div class="label">Milestone count</div>
+                <div class="value" id="draftMilestoneCount">0</div>
+              </div>
+              <div class="summary-box">
+                <div class="label">Form status</div>
+                <div class="value" id="draftStatus">Waiting input</div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="panel side-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="card-title">Flow reminder</div>
+                <div class="subtle">Built directly from the smart contract handoff.</div>
+              </div>
+            </div>
+
+            <div class="timeline">
+              <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="timeline-title">Client approves MockUSDC</div>
+                  <div class="subtle">ERC-20 approval happens before project creation.</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="timeline-title">Escrow locks milestone funds</div>
+                  <div class="subtle">`createProject(freelancer, descriptions, amounts)`</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="timeline-title">Freelancer marks delivery complete</div>
+                  <div class="subtle">Client can approve, cancel pending work, or dispute.</div>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div>
+                  <div class="timeline-title">Payment releases on approval</div>
+                  <div class="subtle">If the client disappears for 14 days, auto-release is claimable.</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-heading activity-heading">
+              <div>
+                <div class="card-title">Recent activity</div>
+                <div class="subtle">Useful during demo and testing.</div>
+              </div>
+            </div>
+
+            <div class="activity-feed" id="activityFeed">
+              <div class="empty-state compact-empty">No activity yet.</div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
