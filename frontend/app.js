@@ -5,6 +5,8 @@ const CONTRACTS = {
   escrow: "0xEda5541b44F17B727285f56E2C82bB8e08C2A82c",
 };
 
+const BACKEND_API_BASE = "http://127.0.0.1:8787";
+
 const ESCROW_ABI = [
   "function createProject(address freelancer, string[] descriptions, uint256[] amounts) returns (uint256)",
   "function completeMilestone(uint256 projectId, uint256 milestoneIdx)",
@@ -43,6 +45,8 @@ const state = {
   clientProjects: [],
   freelancerProjects: [],
   activity: [],
+  backendProjects: [],
+  backendAvailable: false,
 };
 
 const dom = {};
@@ -226,6 +230,7 @@ async function connectWallet(requestAccounts = true) {
     state.tokenDecimals = Number(await state.token.decimals());
     state.autoReleaseDelay = await state.escrow.AUTO_RELEASE_DELAY();
     addActivity("wallet", `Wallet connected: ${shorten(account)}`);
+    await upsertBackendUser(account);
 
     await refreshAll();
   } catch (error) {
@@ -266,13 +271,17 @@ async function refreshAll() {
   }
 
   try {
-    const [balance, clientIds, freelancerIds] = await Promise.all([
+    const [balance, clientIds, freelancerIds, backendProjects, backendActivity] = await Promise.all([
       state.token.balanceOf(state.account),
       state.escrow.getProjectsByClient(state.account),
       state.escrow.getProjectsByFreelancer(state.account),
+      fetchBackendProjects(state.account),
+      fetchBackendActivity(state.account),
     ]);
 
     dom.walletBalance.textContent = formatUnits(balance);
+    state.backendProjects = backendProjects;
+    state.backendAvailable = true;
 
     state.clientProjects = await loadProjects(clientIds, "client");
     state.freelancerProjects = await loadProjects(freelancerIds, "freelancer");
@@ -280,11 +289,16 @@ async function refreshAll() {
     dom.clientProjectCount.textContent = String(state.clientProjects.length);
     dom.freelancerProjectCount.textContent = String(state.freelancerProjects.length);
 
+    if (backendActivity.length) {
+      hydrateActivityFromBackend(backendActivity);
+    }
+
     renderStats();
     renderProjects();
     addActivity("refresh", "On-chain data refreshed.");
   } catch (error) {
     console.error(error);
+    state.backendAvailable = false;
     showToast(`Refresh failed: ${readError(error)}`);
   }
 }
@@ -653,6 +667,21 @@ async function handleCreateProject(event) {
 
     if (createdProjectId !== null && formData.projectTitle) {
       persistProjectTitle(createdProjectId, formData.projectTitle);
+      await syncProjectToBackend({
+        onChainProjectId: createdProjectId,
+        projectTitle: formData.projectTitle,
+        clientAddress: state.account,
+        freelancerAddress: formData.freelancerAddress,
+        chainId: CONTRACTS.chainId,
+        network: CONTRACTS.chainName.toLowerCase(),
+        escrowAddress: CONTRACTS.escrow,
+        txHash: tx.hash,
+        totalUsdc: Number(formatUnits(total).replaceAll(",", "")),
+        milestones: formData.descriptions.map((description, index) => ({
+          description,
+          amountUsdc: Number(formatUnits(formData.amounts[index]).replaceAll(",", "")),
+        })),
+      });
     }
 
     dom.createProjectForm.reset();
@@ -789,6 +818,13 @@ function handleDraftChange() {
 }
 
 function getStoredTitle(project) {
+  const backendProject = state.backendProjects.find(
+    (item) => Number(item.onChainProjectId) === Number(project.id),
+  );
+  if (backendProject?.projectTitle) {
+    return backendProject.projectTitle;
+  }
+
   const titles = getStoredTitles();
   return titles[String(project.id)] || "";
 }
@@ -815,6 +851,29 @@ function addActivity(kind, message) {
     timestamp: new Date().toISOString(),
   });
   state.activity = state.activity.slice(0, 8);
+  renderActivity();
+}
+
+function hydrateActivityFromBackend(entries) {
+  const backendItems = entries.map((entry) => ({
+    kind: entry.type || "backend",
+    message: entry.message,
+    timestamp: entry.createdAt,
+  }));
+
+  state.activity = [...backendItems, ...state.activity]
+    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+    .filter((item, index, array) => {
+      return (
+        array.findIndex(
+          (candidate) =>
+            candidate.kind === item.kind &&
+            candidate.message === item.message &&
+            candidate.timestamp === item.timestamp,
+        ) === index
+      );
+    })
+    .slice(0, 8);
   renderActivity();
 }
 
@@ -897,6 +956,68 @@ function formatUnits(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+async function apiRequest(pathname, options = {}) {
+  const response = await fetch(`${BACKEND_API_BASE}${pathname}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `Backend request failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+async function fetchBackendProjects(wallet) {
+  try {
+    const payload = await apiRequest(`/api/projects?wallet=${encodeURIComponent(wallet)}`);
+    return Array.isArray(payload.projects) ? payload.projects : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function fetchBackendActivity(wallet) {
+  try {
+    const payload = await apiRequest(`/api/activity?wallet=${encodeURIComponent(wallet)}&limit=8`);
+    return Array.isArray(payload.activity) ? payload.activity : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+async function upsertBackendUser(walletAddress) {
+  try {
+    await apiRequest("/api/users", {
+      method: "POST",
+      body: JSON.stringify({
+        walletAddress,
+        role: "wallet-user",
+      }),
+    });
+  } catch (_error) {
+    return;
+  }
+}
+
+async function syncProjectToBackend(project) {
+  try {
+    await apiRequest("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(project),
+    });
+    state.backendProjects = await fetchBackendProjects(state.account);
+    state.backendAvailable = true;
+  } catch (_error) {
+    addActivity("backend", "Project metadata stayed local because backend was unreachable.");
+  }
 }
 
 async function switchToSepolia() {

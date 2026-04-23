@@ -12,6 +12,8 @@ This repository contains the Solidity contracts, Hardhat configuration, deployme
 - Cancel/refund implemented
 - Dispute flow implemented
 - Local test suite passing
+- Frontend prototype included under `frontend/`
+- Backend MVP included under `backend/`
 
 ## Stack
 
@@ -48,6 +50,26 @@ Use Node.js 20.x.
 
 ```bash
 npm install
+```
+
+## Run the app layers
+
+Backend API:
+
+```bash
+npm run backend:start
+```
+
+Frontend static app:
+
+```bash
+python3 -m http.server 4173
+```
+
+Then open:
+
+```text
+http://127.0.0.1:4173/frontend/
 ```
 
 ## Run tests
